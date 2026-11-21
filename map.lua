@@ -40,13 +40,28 @@ end
 
 addon.arrowFrame = CreateFrame("Frame", "RXPG_ARROW", UIParent)
 local af = addon.arrowFrame
+local arrowBaseSize = 32
+-- The white fill takes any RGB tint while the black outline stays visible.
+local customArrowTexture = "Interface/AddOns/" .. addonName .. "/Textures/rxp_navigation_arrow-custom.tga"
 
-function addon.arrowFrame:UpdateVisuals()
+function af:UpdateSize()
+    local size = arrowBaseSize * (addon.settings.profile.arrowScale or 1)
+    self:SetSize(size, size)
+end
+
+function af:UpdateVisuals()
+    if addon.settings.profile.useCustomArrowColor then
+        self.texture:SetTexture(customArrowTexture)
+        self.texture:SetVertexColor(addon.settings:GetArrowColor())
+        return
+    end
+
     local texture = addon.GetV1Texture("rxp_navigation_arrow-1")
     if addon.v2 and addon.v2:IsEnabled() then
         texture = addon.v2:GetTheme().navigationArrow
     end
     self.texture:SetTexture(texture)
+    self.texture:SetVertexColor(1, 1, 1)
 end
 
 local function IsInInstance()
@@ -67,7 +82,7 @@ end
 af:SetMovable(true)
 af:EnableMouse(1)
 af:SetClampedToScreen(true)
-af:SetSize(32, 32)
+af:SetSize(arrowBaseSize, arrowBaseSize)
 af.texture = af:CreateTexture()
 af.texture:SetAllPoints()
 -- af.texture:SetScale(0.5)
@@ -92,7 +107,8 @@ af:SetScript("OnMouseUp", function(self, button)
 end)
 
 function addon.SetupArrow()
-    af.text:SetFont(addon.font, 9,"OUTLINE")
+    af.text:SetFont(addon.font, addon.settings.profile.arrowText or 9, "OUTLINE")
+    af:UpdateSize()
     af:UpdateVisuals()
     af.text:SetTextColor(unpack(addon.activeTheme.textColor))
 

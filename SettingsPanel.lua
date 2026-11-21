@@ -125,6 +125,8 @@ function addon.settings.ChatCommand(input)
     end
 end
 
+local defaultArrowColor = {0, 1, 0}
+
 local settingsDBDefaults = {
     profile = {
         enableTracker = true,
@@ -159,6 +161,8 @@ local settingsDBDefaults = {
 
         -- Sliders
         arrowScale = 1,
+        useCustomArrowColor = false,
+        arrowColor = defaultArrowColor,
         arrowText = 9,
         windowScale = 1,
         numMapPins = 7,
@@ -537,6 +541,10 @@ local function GetProfileOption(info) return addon.settings.profile[info[#info]]
 
 local function SetProfileOption(info, value)
     addon.settings.profile[info[#info]] = value
+end
+
+function addon.settings:GetArrowColor()
+    return unpack(self.profile.arrowColor or defaultArrowColor)
 end
 
 
@@ -3201,12 +3209,12 @@ function addon.settings:CreateAceOptionsPanel()
                         width = optionsWidth,
                         order = 5.1,
                         min = 0.2,
-                        max = 2,
+                        max = 16, -- 512 UI units at the 32-unit base size.
                         step = 0.05,
                         isPercent = true,
                         set = function(info, value)
                             SetProfileOption(info, value)
-                            addon.arrowFrame:SetSize(32 * value, 32 * value)
+                            addon.arrowFrame:UpdateSize()
                         end
                     },
                     arrowText = {
@@ -3231,6 +3239,28 @@ function addon.settings:CreateAceOptionsPanel()
                         width = optionsWidth,
                         func = function()
                             addon.ResetArrowPosition()
+                        end
+                    },
+                    useCustomArrowColor = {
+                        name = L("Custom Arrow Color"),
+                        type = "toggle",
+                        width = optionsWidth,
+                        order = 5.4,
+                        set = function(info, value)
+                            SetProfileOption(info, value)
+                            addon.arrowFrame:UpdateVisuals()
+                        end
+                    },
+                    arrowColor = {
+                        name = L("Arrow Color"),
+                        type = "color",
+                        width = optionsWidth,
+                        order = 5.5,
+                        disabled = function() return not self.profile.useCustomArrowColor end,
+                        get = function() return self:GetArrowColor() end,
+                        set = function(_, r, g, b)
+                            self.profile.arrowColor = {r, g, b}
+                            addon.arrowFrame:UpdateVisuals()
                         end
                     },
                     activeItemsHeader = {
@@ -4533,8 +4563,8 @@ function addon.settings:LoadScales()
     end
 
     if addon.arrowFrame then
-        addon.arrowFrame:SetSize(32 * self.profile.arrowScale,
-                                 32 * self.profile.arrowScale)
+        addon.arrowFrame:UpdateSize()
+        addon.arrowFrame:UpdateVisuals()
     end
 
     if addon.activeItemFrame then

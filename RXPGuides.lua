@@ -1606,10 +1606,6 @@ function addon:OnInitialize()
     addon.isHidden = not addon.settings.profile.showEnabled or addon.settings.profile.hideGuideWindow
     addon.RXPFrame:SetShown(not addon.isHidden)
     addon.RXPFrame:SetScale(addon.settings.profile.windowScale)
-    addon.arrowFrame:SetSize(32 * addon.settings.profile.arrowScale,
-                             32 * addon.settings.profile.arrowScale)
-    addon.arrowFrame.text:SetFont(addon.font,
-                                  addon.settings.profile.arrowText, "OUTLINE")
     addon.activeItemFrame:SetScale(addon.settings.profile.activeItemsScale)
 
     addon.v2:Setup()
