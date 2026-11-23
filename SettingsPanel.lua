@@ -126,6 +126,9 @@ function addon.settings.ChatCommand(input)
 end
 
 local defaultArrowColor = {0, 1, 0}
+local defaultArrowBorderColor = {0, 0, 0}
+local defaultArrowGradientMiddleColor = {0, 0.85, 0.75}
+local defaultArrowGradientEdgeColor = {0, 0.54, 1}
 
 local settingsDBDefaults = {
     profile = {
@@ -163,6 +166,10 @@ local settingsDBDefaults = {
         arrowScale = 1,
         useCustomArrowColor = false,
         arrowColor = defaultArrowColor,
+        arrowExtraOutlineWidth = 0,
+        arrowBorderColor = defaultArrowBorderColor,
+        arrowGradientMiddleColor = defaultArrowGradientMiddleColor,
+        arrowGradientEdgeColor = defaultArrowGradientEdgeColor,
         arrowText = 9,
         windowScale = 1,
         numMapPins = 7,
@@ -545,6 +552,58 @@ end
 
 function addon.settings:GetArrowColor()
     return unpack(self.profile.arrowColor or defaultArrowColor)
+end
+
+function addon.settings:GetArrowBorderColor()
+    return unpack(self.profile.arrowBorderColor or defaultArrowBorderColor)
+end
+
+function addon.settings:GetArrowGradientMode()
+    return self.profile.arrowGradientMode or "solid"
+end
+
+function addon.settings:GetArrowGradientMiddleColor()
+    return unpack(self.profile.arrowGradientMiddleColor or defaultArrowGradientMiddleColor)
+end
+
+function addon.settings:GetArrowGradientEdgeColor()
+    return unpack(self.profile.arrowGradientEdgeColor or defaultArrowGradientEdgeColor)
+end
+
+local function shiftArrowHue(r, g, b, degrees)
+    local value = math.max(r, g, b)
+    local chroma = value - math.min(r, g, b)
+    if chroma == 0 then return r, g, b end
+
+    local hue
+    if value == r then
+        hue = (g - b) / chroma
+    elseif value == g then
+        hue = (b - r) / chroma + 2
+    else
+        hue = (r - g) / chroma + 4
+    end
+    hue = hue + degrees / 60
+
+    local function hueChannel(channelOffset)
+        local sector = (hue + channelOffset) % 6
+        return value - chroma * math.max(0, math.min(sector, 4 - sector, 1))
+    end
+
+    return hueChannel(5), hueChannel(3), hueChannel(1)
+end
+
+function addon.settings:MigrateArrowHueShift()
+    local profile = self.profile
+    local degrees = profile.arrowHueShift
+    if not degrees then return end
+
+    if degrees ~= 0 and not profile.arrowGradientMode then
+        local r, g, b = self:GetArrowColor()
+        profile.arrowGradientEdgeColor = {shiftArrowHue(r, g, b, degrees)}
+        profile.arrowGradientMode = "two"
+    end
+    profile.arrowHueShift = nil
 end
 
 
@@ -3251,16 +3310,88 @@ function addon.settings:CreateAceOptionsPanel()
                             addon.arrowFrame:UpdateVisuals()
                         end
                     },
-                    arrowColor = {
-                        name = L("Arrow Color"),
-                        type = "color",
+                    arrowGradientMode = {
+                        name = L("Arrow Gradient"),
+                        type = "select",
                         width = optionsWidth,
                         order = 5.5,
+                        values = {solid = L("Solid"), two = L("Two Colors"), three = L("Three Colors")},
+                        sorting = {"solid", "two", "three"},
+                        disabled = function() return not self.profile.useCustomArrowColor end,
+                        get = function() return self:GetArrowGradientMode() end,
+                        set = function(info, value)
+                            SetProfileOption(info, value)
+                            addon.arrowFrame:UpdateVisuals()
+                        end
+                    },
+                    arrowColor = {
+                        name = function()
+                            return self:GetArrowGradientMode() == "solid" and L("Arrow Color") or L("Arrow Center Color")
+                        end,
+                        type = "color",
+                        width = optionsWidth,
+                        order = 5.6,
                         disabled = function() return not self.profile.useCustomArrowColor end,
                         get = function() return self:GetArrowColor() end,
                         set = function(_, r, g, b)
                             self.profile.arrowColor = {r, g, b}
                             addon.arrowFrame:UpdateVisuals()
+                        end
+                    },
+                    arrowGradientMiddleColor = {
+                        name = L("Arrow Middle Color"),
+                        type = "color",
+                        width = optionsWidth,
+                        order = 5.7,
+                        hidden = function()
+                            return not self.profile.useCustomArrowColor or self:GetArrowGradientMode() ~= "three"
+                        end,
+                        get = function() return self:GetArrowGradientMiddleColor() end,
+                        set = function(_, r, g, b)
+                            self.profile.arrowGradientMiddleColor = {r, g, b}
+                            addon.arrowFrame:UpdateVisuals()
+                        end
+                    },
+                    arrowGradientEdgeColor = {
+                        name = L("Arrow Edge Color"),
+                        type = "color",
+                        width = optionsWidth,
+                        order = 5.8,
+                        hidden = function()
+                            return not self.profile.useCustomArrowColor or self:GetArrowGradientMode() == "solid"
+                        end,
+                        get = function() return self:GetArrowGradientEdgeColor() end,
+                        set = function(_, r, g, b)
+                            self.profile.arrowGradientEdgeColor = {r, g, b}
+                            addon.arrowFrame:UpdateVisuals()
+                        end
+                    },
+                    arrowExtraOutlineWidth = {
+                        name = L("Extra Outline Width"),
+                        desc = L("Adds to the custom arrow's outline in UI units."),
+                        type = "range",
+                        width = optionsWidth,
+                        order = 5.85,
+                        min = 0,
+                        max = 16,
+                        step = 0.1,
+                        disabled = function() return not self.profile.useCustomArrowColor end,
+                        get = function() return self.profile.arrowExtraOutlineWidth or 0 end,
+                        set = function(info, value)
+                            SetProfileOption(info, value)
+                            addon.arrowFrame:UpdateOutline()
+                        end
+                    },
+                    arrowBorderColor = {
+                        name = L("Arrow Border Color"),
+                        type = "color",
+                        width = optionsWidth,
+                        order = 5.9,
+                        disabled = function() return not self.profile.useCustomArrowColor end,
+                        get = function() return self:GetArrowBorderColor() end,
+                        set = function(_, r, g, b)
+                            self.profile.arrowBorderColor = {r, g, b}
+                            addon.arrowFrame:UpdateOutline()
                         end
                     },
                     activeItemsHeader = {

@@ -41,18 +41,65 @@ end
 addon.arrowFrame = CreateFrame("Frame", "RXPG_ARROW", UIParent)
 local af = addon.arrowFrame
 local arrowBaseSize = 32
--- The white fill takes any RGB tint while the black outline stays visible.
-local customArrowTexture = "Interface/AddOns/" .. addonName .. "/Textures/rxp_navigation_arrow-custom.tga"
+local customArrowTexture = "Interface/AddOns/" .. addonName .. "/Textures/rxp_navigation_arrow-custom"
+local arrowTextureSize = 512
+-- The center of the rounded arrow's body is 11.5 texels below the texture pivot.
+local arrowCenterOffset = 11.5
+local arrowInradius = 114
+
+local function positionArrowOutline(frame)
+    local angle = frame.orientation
+    local offset = frame.outlineOffsetY
+    frame.outlineTexture:SetPoint("CENTER", frame, "CENTER", -offset * math.sin(angle), offset * math.cos(angle))
+    frame.outlineTexture:SetRotation(angle)
+end
+
+function af:UpdateOutline()
+    local settings = addon.settings
+    local profile = settings.profile
+    self.outlineTexture:SetShown(not not profile.useCustomArrowColor)
+    if not profile.useCustomArrowColor then return end
+
+    local width = profile.arrowExtraOutlineWidth or 0
+    -- Grow around the arrow's body so the stroke follows the outline as it turns.
+    local growth = width / arrowInradius
+    local size = self:GetWidth() + arrowTextureSize * growth
+    self.outlineTexture:SetSize(size, size)
+    self.outlineTexture:SetVertexColor(settings:GetArrowBorderColor())
+    self.outlineOffsetY = arrowCenterOffset * growth
+    positionArrowOutline(self)
+end
 
 function af:UpdateSize()
     local size = arrowBaseSize * (addon.settings.profile.arrowScale or 1)
     self:SetSize(size, size)
+    self:UpdateOutline()
 end
 
 function af:UpdateVisuals()
-    if addon.settings.profile.useCustomArrowColor then
-        self.texture:SetTexture(customArrowTexture)
-        self.texture:SetVertexColor(addon.settings:GetArrowColor())
+    local settings = addon.settings
+    local profile = settings.profile
+    settings:MigrateArrowHueShift()
+    local gradientMode = settings:GetArrowGradientMode()
+    local showGradient = profile.useCustomArrowColor and gradientMode ~= "solid"
+    local showMiddle = showGradient and gradientMode == "three"
+    self.edgeGradientTexture:SetShown(not not showGradient)
+    self.middleGradientTexture:SetShown(not not showMiddle)
+    self:UpdateOutline()
+
+    if profile.useCustomArrowColor then
+        self.texture:SetTexture(customArrowTexture .. "-fill.blp")
+        self.texture:SetVertexColor(settings:GetArrowColor())
+        if showGradient then
+            local edgeMask = showMiddle and "-gradient-edge.blp" or "-gradient.blp"
+            self.edgeGradientTexture:SetTexture(customArrowTexture .. edgeMask)
+            self.edgeGradientTexture:SetVertexColor(settings:GetArrowGradientEdgeColor())
+            self.edgeGradientTexture:SetRotation(self.orientation)
+        end
+        if showMiddle then
+            self.middleGradientTexture:SetVertexColor(settings:GetArrowGradientMiddleColor())
+            self.middleGradientTexture:SetRotation(self.orientation)
+        end
         return
     end
 
@@ -62,6 +109,14 @@ function af:UpdateVisuals()
     end
     self.texture:SetTexture(texture)
     self.texture:SetVertexColor(1, 1, 1)
+end
+
+function af:SetArrowRotation(angle)
+    self.orientation = angle
+    self.texture:SetRotation(angle)
+    if self.edgeGradientTexture:IsShown() then self.edgeGradientTexture:SetRotation(angle) end
+    if self.middleGradientTexture:IsShown() then self.middleGradientTexture:SetRotation(angle) end
+    if self.outlineTexture:IsShown() then positionArrowOutline(self) end
 end
 
 local function IsInInstance()
@@ -83,9 +138,18 @@ af:SetMovable(true)
 af:EnableMouse(1)
 af:SetClampedToScreen(true)
 af:SetSize(arrowBaseSize, arrowBaseSize)
-af.texture = af:CreateTexture()
+af.outlineTexture = af:CreateTexture(nil, "ARTWORK", nil, -1)
+af.outlineTexture:SetTexture(customArrowTexture .. "-outline.blp")
+af.outlineTexture:Hide()
+af.texture = af:CreateTexture(nil, "ARTWORK")
 af.texture:SetAllPoints()
--- af.texture:SetScale(0.5)
+af.middleGradientTexture = af:CreateTexture(nil, "ARTWORK", nil, 1)
+af.middleGradientTexture:SetTexture(customArrowTexture .. "-gradient-middle.blp")
+af.middleGradientTexture:SetAllPoints()
+af.middleGradientTexture:Hide()
+af.edgeGradientTexture = af:CreateTexture(nil, "ARTWORK", nil, 2)
+af.edgeGradientTexture:SetAllPoints()
+af.edgeGradientTexture:Hide()
 af.text = af:CreateFontString(nil, "OVERLAY")
 af.text:SetJustifyH("CENTER")
 af.text:SetJustifyV("MIDDLE")
@@ -128,7 +192,7 @@ function addon.DrawArrow(self)
         af.alpha = 1
         af:SetAlpha(1)
         addon.hideArrow = true
-        self.texture:SetRotation(0)
+        self:SetArrowRotation(0)
         self.text:SetText("~")
         return
     end
@@ -157,8 +221,7 @@ function addon.DrawArrow(self)
     dist = math.floor(dist)
 
     if diff > self.lowerbound and diff < self.upperbound or self.forceUpdate then
-        self.orientation = orientation
-        self.texture:SetRotation(orientation)
+        self:SetArrowRotation(orientation)
         self.forceUpdate = false
     end
 
@@ -1066,7 +1129,7 @@ local function updateArrowData()
                 and addon.settings.profile.showEnabled
             )
 
-            af.dist, af.orientation, af.element = 0, 0, element
+            af.dist, af.element = 0, element
             af.forceUpdate = true
             return true
         end
